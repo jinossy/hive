@@ -26,12 +26,11 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.druid.io.DruidQueryBasedInputFormat;
 import org.apache.hadoop.hive.druid.io.HiveDruidSplit;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.junit.Test;
 
 import io.druid.query.Query;
 import junit.framework.TestCase;
 
-public class TestHiveDruidQueryBasedInputFormat extends TestCase {
+@SuppressWarnings("SameParameterValue") public class TestHiveDruidQueryBasedInputFormat extends TestCase {
 
   private static final String TIMESERIES_QUERY =
       "{  \"queryType\": \"timeseries\", "
@@ -46,11 +45,10 @@ public class TestHiveDruidQueryBasedInputFormat extends TestCase {
           + "\"descending\":true,"
           + "\"virtualColumns\":[],"
           + "\"filter\":null,"
-          + "\"granularity\":{\"type\":\"period\",\"period\":\"P1D\",\"timeZone\":"
-          + "\"America/Los_Angeles\",\"origin\":null},"
+          + "\"granularity\":\"DAY\","
           + "\"aggregations\":[],"
           + "\"postAggregations\":[],"
-          + "\"context\":null}, [localhost:8082]}]";
+          + "\"context\":{\"queryId\":\"\"}}, [localhost:8082]}]";
 
   private static final String TOPN_QUERY =
       "{  \"queryType\": \"topN\", "
@@ -87,7 +85,7 @@ public class TestHiveDruidQueryBasedInputFormat extends TestCase {
           + "\"aggregations\":[{\"type\":\"longSum\",\"name\":\"count\",\"fieldName\":\"count\",\"expression\":null},"
           + "{\"type\":\"doubleSum\",\"name\":\"some_metric\",\"fieldName\":\"some_metric\",\"expression\":null}],"
           + "\"postAggregations\":[],"
-          + "\"context\":null,"
+          + "\"context\":{\"queryId\":\"\"},"
           + "\"descending\":false}, [localhost:8082]}]";
 
   private static final String GROUP_BY_QUERY =
@@ -111,8 +109,7 @@ public class TestHiveDruidQueryBasedInputFormat extends TestCase {
           + "\"intervals\":{\"type\":\"LegacySegmentSpec\",\"intervals\":[\"2012-01-01T08:00:00.000Z/2012-01-03T08:00:00.000Z\"]},"
           + "\"virtualColumns\":[],"
           + "\"filter\":null,"
-          + "\"granularity\":{\"type\":\"period\",\"period\":\"P1D\",\"timeZone\":"
-          + "\"America/Los_Angeles\",\"origin\":null},"
+          + "\"granularity\":\"DAY\","
           + "\"dimensions\":[{\"type\":\"LegacyDimensionSpec\",\"dimension\":\"country\",\"outputName\":\"country\",\"outputType\":\"STRING\"},"
           + "{\"type\":\"LegacyDimensionSpec\",\"dimension\":\"device\",\"outputName\":\"device\",\"outputType\":\"STRING\"}],"
           + "\"aggregations\":[{\"type\":\"longSum\",\"name\":\"total_usage\",\"fieldName\":\"user_count\",\"expression\":null},"
@@ -121,7 +118,7 @@ public class TestHiveDruidQueryBasedInputFormat extends TestCase {
           + "\"having\":null,"
           + "\"limitSpec\":{\"type\":\"default\",\"columns\":[{\"dimension\":\"country\",\"direction\":\"ascending\",\"dimensionOrder\":{\"type\":\"lexicographic\"}},"
           + "{\"dimension\":\"data_transfer\",\"direction\":\"ascending\",\"dimensionOrder\":{\"type\":\"lexicographic\"}}],\"limit\":5000},"
-          + "\"context\":null,"
+          + "\"context\":{\"queryId\":\"\"},"
           + "\"descending\":false}, [localhost:8082]}]";
 
   private static final String SELECT_QUERY =
@@ -151,9 +148,8 @@ public class TestHiveDruidQueryBasedInputFormat extends TestCase {
           + "\"metrics\":[\"count\",\"added\",\"delta\",\"variation\",\"deleted\"],"
           + "\"virtualColumns\":[],"
           + "\"pagingSpec\":{\"pagingIdentifiers\":{},\"threshold\":5,\"fromNext\":false},"
-          + "\"context\":{\"druid.query.fetch\":true}}, [localhost:8082]}]";
+          + "\"context\":{\"druid.query.fetch\":true,\"queryId\":\"\"}}, [localhost:8082]}]";
 
-  @Test
   public void testTimeZone() throws Exception {
     DruidQueryBasedInputFormat input = new DruidQueryBasedInputFormat();
 

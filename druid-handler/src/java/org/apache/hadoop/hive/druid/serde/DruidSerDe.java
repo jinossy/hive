@@ -18,22 +18,6 @@
 package org.apache.hadoop.hive.druid.serde;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.base.Function;
-import java.io.IOException;
-import java.io.InputStream;
-import java.time.Instant;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
-import java.util.stream.Collectors;
-
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import io.druid.query.Druids;
@@ -51,7 +35,7 @@ import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.druid.DruidStorageHandler;
 import org.apache.hadoop.hive.druid.DruidStorageHandlerUtils;
-import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
+import org.apache.hadoop.hive.druid.conf.DruidConstants;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
@@ -99,7 +83,20 @@ import org.apache.hadoop.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static org.apache.hadoop.hive.druid.serde.DruidSerDeUtils.TIMESTAMP_FORMAT;
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Properties;
+import java.util.stream.Collectors;
+
 import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
 
 /**
@@ -107,7 +104,7 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
  */
 @SerDeSpec(schemaProps = { Constants.DRUID_DATA_SOURCE }) public class DruidSerDe extends AbstractSerDe {
 
-  protected static final Logger LOG = LoggerFactory.getLogger(DruidSerDe.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DruidSerDe.class);
 
   private String[] columns;
   private PrimitiveTypeInfo[] types;
@@ -134,8 +131,11 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       }
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("DruidSerDe initialized with\n" + "\t columns: " + Arrays.toString(columns) + "\n\t types: " + Arrays
-          .toString(types));
+      LOG.debug("DruidSerDe initialized with\n"
+          + "\t columns: "
+          + Arrays.toString(columns)
+          + "\n\t types: "
+          + Arrays.toString(types));
     }
   }
 
@@ -147,8 +147,9 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
 
     String dataSource = properties.getProperty(Constants.DRUID_DATA_SOURCE);
     if (dataSource == null) {
-      throw new SerDeException(
-          "Druid data source not specified; use " + Constants.DRUID_DATA_SOURCE + " in table properties");
+      throw new SerDeException("Druid data source not specified; use "
+          + Constants.DRUID_DATA_SOURCE
+          + " in table properties");
     }
     SegmentMetadataQueryBuilder builder = new Druids.SegmentMetadataQueryBuilder();
     builder.dataSource(dataSource);
@@ -169,7 +170,7 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       throw new SerDeException(e);
     }
     for (Entry<String, ColumnAnalysis> columnInfo : schemaInfo.getColumns().entrySet()) {
-      if (columnInfo.getKey().equals(DruidStorageHandlerUtils.DEFAULT_TIMESTAMP_COLUMN)) {
+      if (columnInfo.getKey().equals(DruidConstants.DEFAULT_TIMESTAMP_COLUMN)) {
         // Special handling for timestamp column
         columnNames.add(columnInfo.getKey()); // field name
         PrimitiveTypeInfo type = tsTZTypeInfo; // field type
@@ -182,32 +183,36 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       columnTypes.add(type instanceof TimestampLocalTZTypeInfo ? tsTZTypeInfo : type);
       inspectors.add(PrimitiveObjectInspectorFactory.getPrimitiveWritableObjectInspector(type));
     }
-    columns = columnNames.toArray(new String[columnNames.size()]);
-    types = columnTypes.toArray(new PrimitiveTypeInfo[columnTypes.size()]);
+    columns = columnNames.toArray(new String[0]);
+    types = columnTypes.toArray(new PrimitiveTypeInfo[0]);
     inspector = ObjectInspectorFactory.getStandardStructObjectInspector(columnNames, inspectors);
   }
 
   private void initFromProperties(final Properties properties) throws SerDeException {
-    final List<ObjectInspector> inspectors = new ArrayList<>();
-    final List<String> columnNames = new ArrayList<>();
-    final List<PrimitiveTypeInfo> columnTypes = new ArrayList<>();
 
-    columnNames.addAll(Utilities.getColumnNames(properties));
-    if (!columnNames.contains(DruidStorageHandlerUtils.DEFAULT_TIMESTAMP_COLUMN)) {
-      throw new SerDeException("Timestamp column (' " + DruidStorageHandlerUtils.DEFAULT_TIMESTAMP_COLUMN
-          + "') not specified in create table; list of columns is : " + properties
-          .getProperty(serdeConstants.LIST_COLUMNS));
+    final List<String> columnNames = new ArrayList<>(Utilities.getColumnNames(properties));
+    if (!columnNames.contains(DruidConstants.DEFAULT_TIMESTAMP_COLUMN)) {
+      throw new SerDeException("Timestamp column (' "
+          + DruidConstants.DEFAULT_TIMESTAMP_COLUMN
+          + "') not specified in create table; list of columns is : "
+          + properties.getProperty(serdeConstants.LIST_COLUMNS));
     }
-    columnTypes.addAll(Lists.transform(
-        Lists.transform(Utilities.getColumnTypes(properties), type -> TypeInfoFactory.getPrimitiveTypeInfo(type)),
-        e -> e instanceof TimestampLocalTZTypeInfo ? tsTZTypeInfo : e
-    ));
-    inspectors.addAll(Lists.transform(columnTypes,
-        (Function<PrimitiveTypeInfo, ObjectInspector>) type -> PrimitiveObjectInspectorFactory
-            .getPrimitiveWritableObjectInspector(type)
-    ));
-    columns = columnNames.toArray(new String[columnNames.size()]);
-    types = columnTypes.toArray(new PrimitiveTypeInfo[columnTypes.size()]);
+    final List<PrimitiveTypeInfo>
+        columnTypes =
+        Utilities.getColumnTypes(properties)
+            .stream()
+            .map(TypeInfoFactory::getPrimitiveTypeInfo)
+            .collect(Collectors.toList())
+            .stream()
+            .map(e -> e instanceof TimestampLocalTZTypeInfo ? tsTZTypeInfo : e)
+            .collect(Collectors.toList());
+    final List<ObjectInspector>
+        inspectors =
+        columnTypes.stream()
+            .map(PrimitiveObjectInspectorFactory::getPrimitiveWritableObjectInspector)
+            .collect(Collectors.toList());
+    columns = columnNames.toArray(new String[0]);
+    types = columnTypes.toArray(new PrimitiveTypeInfo[0]);
     inspector = ObjectInspectorFactory.getStandardStructObjectInspector(columnNames, inspectors);
   }
 
@@ -216,9 +221,11 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
     final List<ObjectInspector> inspectors = new ArrayList<>();
     final List<String> columnNames;
     final List<PrimitiveTypeInfo> columnTypes;
-    final String fieldNamesProperty =
+    final String
+        fieldNamesProperty =
         Preconditions.checkNotNull(properties.getProperty(Constants.DRUID_QUERY_FIELD_NAMES, null));
-    final String fieldTypesProperty =
+    final String
+        fieldTypesProperty =
         Preconditions.checkNotNull(properties.getProperty(Constants.DRUID_QUERY_FIELD_TYPES, null));
     if (fieldNamesProperty.isEmpty()) {
       // this might seem counter intuitive but some queries like query
@@ -226,17 +233,21 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       // LIMIT 1
       // is planed in a way where we only push a filter down and keep the project of null as hive project. Thus empty
       // columns
-      columnNames = Collections.EMPTY_LIST;
-      columnTypes = Collections.EMPTY_LIST;
+      columnNames = Collections.emptyList();
+      columnTypes = Collections.emptyList();
     } else {
       columnNames = Arrays.stream(fieldNamesProperty.trim().split(",")).collect(Collectors.toList());
-      columnTypes = TypeInfoUtils.getTypeInfosFromTypeString(fieldTypesProperty).stream()
-          .map(e -> TypeInfoFactory.getPrimitiveTypeInfo(e.getTypeName())).map(primitiveTypeInfo -> {
-            if (primitiveTypeInfo instanceof TimestampLocalTZTypeInfo) {
-              return tsTZTypeInfo;
-            }
-            return primitiveTypeInfo;
-          }).collect(Collectors.toList());
+      columnTypes =
+          TypeInfoUtils.getTypeInfosFromTypeString(fieldTypesProperty)
+              .stream()
+              .map(e -> TypeInfoFactory.getPrimitiveTypeInfo(e.getTypeName()))
+              .map(primitiveTypeInfo -> {
+                if (primitiveTypeInfo instanceof TimestampLocalTZTypeInfo) {
+                  return tsTZTypeInfo;
+                }
+                return primitiveTypeInfo;
+              })
+              .collect(Collectors.toList());
     }
     columns = new String[columnNames.size()];
     types = new PrimitiveTypeInfo[columnNames.size()];
@@ -253,9 +264,9 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       throws SerDeException, IOException {
     InputStream response;
     try {
-      response = DruidStorageHandlerUtils.submitRequest(DruidStorageHandler.getHttpClient(),
-          DruidStorageHandlerUtils.createSmileRequest(address, query)
-      );
+      response =
+          DruidStorageHandlerUtils.submitRequest(DruidStorageHandler.getHttpClient(),
+              DruidStorageHandlerUtils.createSmileRequest(address, query));
     } catch (Exception e) {
       throw new SerDeException(StringUtils.stringifyException(e));
     }
@@ -288,8 +299,9 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
 
   @Override public Writable serialize(Object o, ObjectInspector objectInspector) throws SerDeException {
     if (objectInspector.getCategory() != ObjectInspector.Category.STRUCT) {
-      throw new SerDeException(
-          getClass().toString() + " can only serialize struct types, but we got: " + objectInspector.getTypeName());
+      throw new SerDeException(getClass().toString()
+          + " can only serialize struct types, but we got: "
+          + objectInspector.getTypeName());
     }
 
     // Prepare the field ObjectInspectors
@@ -307,12 +319,17 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
       final Object res;
       switch (types[i].getPrimitiveCategory()) {
       case TIMESTAMP:
-        res = ((TimestampObjectInspector) fields.get(i).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(i)).toEpochMilli();
-          break;
+        res =
+            ((TimestampObjectInspector) fields.get(i).getFieldObjectInspector()).getPrimitiveJavaObject(values.get(i))
+                .toEpochMilli();
+        break;
       case TIMESTAMPLOCALTZ:
-        res = ((TimestampLocalTZObjectInspector) fields.get(i).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(i)).getZonedDateTime().toInstant().toEpochMilli();
+        res =
+            ((TimestampLocalTZObjectInspector) fields.get(i)
+                .getFieldObjectInspector()).getPrimitiveJavaObject(values.get(i))
+                .getZonedDateTime()
+                .toInstant()
+                .toEpochMilli();
         break;
       case BYTE:
         res = ((ByteObjectInspector) fields.get(i).getFieldObjectInspector()).get(values.get(i));
@@ -330,24 +347,23 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
         res = ((FloatObjectInspector) fields.get(i).getFieldObjectInspector()).get(values.get(i));
         break;
       case DOUBLE:
-        res = ((DoubleObjectInspector) fields.get(i).getFieldObjectInspector())
-            .get(values.get(i));
+        res = ((DoubleObjectInspector) fields.get(i).getFieldObjectInspector()).get(values.get(i));
         break;
       case CHAR:
-        res = ((HiveCharObjectInspector) fields.get(i).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(i)).getValue();
+        res =
+            ((HiveCharObjectInspector) fields.get(i).getFieldObjectInspector()).getPrimitiveJavaObject(values.get(i))
+                .getValue();
         break;
       case VARCHAR:
-        res = ((HiveVarcharObjectInspector) fields.get(i).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(i)).getValue();
+        res =
+            ((HiveVarcharObjectInspector) fields.get(i).getFieldObjectInspector()).getPrimitiveJavaObject(values.get(i))
+                .getValue();
         break;
       case STRING:
-        res = ((StringObjectInspector) fields.get(i).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(i));
+        res = ((StringObjectInspector) fields.get(i).getFieldObjectInspector()).getPrimitiveJavaObject(values.get(i));
         break;
       case BOOLEAN:
-        res = ((BooleanObjectInspector) fields.get(i).getFieldObjectInspector())
-            .get(values.get(i));
+        res = ((BooleanObjectInspector) fields.get(i).getFieldObjectInspector()).get(values.get(i)) ? 1L : 0L;
         break;
       default:
         throw new SerDeException("Unsupported type: " + types[i].getPrimitiveCategory());
@@ -358,22 +374,27 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
     // First Segment Granularity has to be here.
     final int granularityFieldIndex = columns.length;
     assert values.size() > granularityFieldIndex;
-    Preconditions.checkArgument(
-        fields.get(granularityFieldIndex).getFieldName().equals(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME));
-    value.put(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME,
-        ((TimestampObjectInspector) fields.get(granularityFieldIndex).getFieldObjectInspector())
-            .getPrimitiveJavaObject(values.get(granularityFieldIndex)).toEpochMilli());
+    Preconditions.checkArgument(fields.get(granularityFieldIndex)
+        .getFieldName()
+        .equals(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME));
+
+    Timestamp
+        timestamp =
+        ((TimestampObjectInspector) fields.get(granularityFieldIndex).getFieldObjectInspector()).getPrimitiveJavaObject(
+            values.get(granularityFieldIndex));
+    Preconditions.checkNotNull(timestamp, "Timestamp column cannot have null value");
+    value.put(Constants.DRUID_TIMESTAMP_GRANULARITY_COL_NAME, timestamp.toEpochMilli());
+
     if (values.size() == columns.length + 2) {
       // Then partition number if any.
       final int partitionNumPos = granularityFieldIndex + 1;
       Preconditions.checkArgument(fields.get(partitionNumPos).getFieldName().equals(Constants.DRUID_SHARD_KEY_COL_NAME),
-          String.format("expecting to encounter %s but was %s", Constants.DRUID_SHARD_KEY_COL_NAME,
-              fields.get(partitionNumPos).getFieldName()
-          )
-      );
+          String.format("expecting to encounter %s but was %s",
+              Constants.DRUID_SHARD_KEY_COL_NAME,
+              fields.get(partitionNumPos).getFieldName()));
       value.put(Constants.DRUID_SHARD_KEY_COL_NAME,
-          ((LongObjectInspector) fields.get(partitionNumPos).getFieldObjectInspector()).get(values.get(partitionNumPos))
-      );
+          ((LongObjectInspector) fields.get(partitionNumPos)
+              .getFieldObjectInspector()).get(values.get(partitionNumPos)));
     }
 
     return new DruidWritable(value);
@@ -388,46 +409,21 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
     final DruidWritable input = (DruidWritable) writable;
     final List<Object> output = Lists.newArrayListWithExpectedSize(columns.length);
     for (int i = 0; i < columns.length; i++) {
-      final Object value = input.getValue().get(columns[i]);
+      final Object value = input.isCompacted() ? input.getCompactedValue().get(i) : input.getValue().get(columns[i]);
       if (value == null) {
         output.add(null);
         continue;
       }
       switch (types[i].getPrimitiveCategory()) {
       case TIMESTAMP:
-        if (value instanceof Number) {
-          output.add(new TimestampWritableV2(Timestamp.valueOf(
-              ZonedDateTime.ofInstant(Instant.ofEpochMilli(((Number) value).longValue()), tsTZTypeInfo.timeZone())
-                  .format(DateTimeFormatter.ofPattern(TIMESTAMP_FORMAT)))));
-        } else {
-          output.add(new TimestampWritableV2(Timestamp.valueOf((String) value)));
-        }
-
+        output.add(new TimestampWritableV2(Timestamp.ofEpochMilli(deserializeToMillis(value))));
         break;
       case TIMESTAMPLOCALTZ:
-        final long numberOfMillis;
-        if (value instanceof Number) {
-          numberOfMillis = ((Number) value).longValue();
-        } else {
-          // it is an extraction fn need to be parsed
-          numberOfMillis = dateOptionalTimeParser().parseDateTime((String) value).getMillis();
-        }
-        output.add(new TimestampLocalTZWritable(new TimestampTZ(ZonedDateTime
-            .ofInstant(Instant.ofEpochMilli(numberOfMillis),
-                ((TimestampLocalTZTypeInfo) types[i]).timeZone()
-            ))));
+        output.add(new TimestampLocalTZWritable(new TimestampTZ(ZonedDateTime.ofInstant(Instant.ofEpochMilli(
+            deserializeToMillis(value)), ((TimestampLocalTZTypeInfo) types[i]).timeZone()))));
         break;
       case DATE:
-        final DateWritableV2 dateWritable;
-        if (value instanceof Number) {
-          dateWritable = new DateWritableV2(
-              Date.ofEpochMilli((((Number) value).longValue())));
-        } else {
-          // it is an extraction fn need to be parsed
-          dateWritable = new DateWritableV2(
-              Date.ofEpochMilli(dateOptionalTimeParser().parseDateTime((String) value).getMillis()));
-        }
-        output.add(dateWritable);
+        output.add(new DateWritableV2(Date.ofEpochMilli(deserializeToMillis(value))));
         break;
       case BYTE:
         output.add(new ByteWritable(((Number) value).byteValue()));
@@ -458,8 +454,8 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
         output.add(new HiveCharWritable(new HiveChar(value.toString(), ((CharTypeInfo) types[i]).getLength())));
         break;
       case VARCHAR:
-        output
-            .add(new HiveVarcharWritable(new HiveVarchar(value.toString(), ((VarcharTypeInfo) types[i]).getLength())));
+        output.add(new HiveVarcharWritable(new HiveVarchar(value.toString(),
+            ((VarcharTypeInfo) types[i]).getLength())));
         break;
       case STRING:
         output.add(new Text(value.toString()));
@@ -478,12 +474,28 @@ import static org.joda.time.format.ISODateTimeFormat.dateOptionalTimeParser;
     return output;
   }
 
+  private long deserializeToMillis(Object value) {
+    long numberOfMillis;
+    if (value instanceof Number) {
+      numberOfMillis = ((Number) value).longValue();
+    } else {
+      // it is an extraction fn need to be parsed
+      try {
+        numberOfMillis = dateOptionalTimeParser().parseDateTime((String) value).getMillis();
+      } catch (IllegalArgumentException e) {
+        // we may not be able to parse the date if it already comes in Hive format,
+        // we retry and otherwise fail
+        numberOfMillis = Timestamp.valueOf((String) value).toEpochMilli();
+      }
+    }
+    return numberOfMillis;
+  }
+
   @Override public ObjectInspector getObjectInspector() {
     return inspector;
   }
 
   @Override public boolean shouldStoreFieldsInMetastore(Map<String, String> tableParams) {
-    // If Druid table is not an external table store the schema in metadata store.
-    return !MetaStoreUtils.isExternal(tableParams);
+    return true;
   }
 }
